@@ -12,19 +12,24 @@ st.title("✍️ Handwriting to Font — Label & Generate")
 def create_minimal_blank_font():
     font = TTFont()
 
-    # Set initial glyph order with .notdef
     font.setGlyphOrder(['.notdef'])
 
-    # Add required tables
     for tag in ['head', 'hhea', 'maxp', 'name', 'OS/2', 'post', 'cmap', 'glyf', 'hmtx']:
         font[tag] = newTable(tag)
 
-    # Set minimal values for font tables
+    # Set minimal values for head table — including all required fields
     font['head'].unitsPerEm = 1000
     font['head'].xMin = 0
     font['head'].yMin = 0
     font['head'].xMax = 1000
     font['head'].yMax = 1000
+    font['head'].flags = 0
+    font['head'].created = 0
+    font['head'].modified = 0
+    font['head'].macStyle = 0
+    font['head'].lowestRecPPEM = 8
+    font['head'].fontDirectionHint = 2
+    font['head'].magicNumber = 0x5F0F3CF5
     font['head'].indexToLocFormat = 0
     font['head'].glyphDataFormat = 0
 
@@ -46,7 +51,6 @@ def create_minimal_blank_font():
 
     font['post'].formatType = 3.0
 
-    # Setup cmap table with empty cmap subtable
     from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
     cmap_subtable = cmap_format_4(4)
     cmap_subtable.platformID = 3
@@ -58,7 +62,7 @@ def create_minimal_blank_font():
     font['glyf'].glyphs = {}
     font['hmtx'].metrics = {}
 
-    # Create and add the empty .notdef glyph
+    # Add empty .notdef glyph
     pen = TTGlyphPen(None)
     pen.moveTo((0, 0))
     pen.lineTo((0, 0))
@@ -66,7 +70,6 @@ def create_minimal_blank_font():
     glyph = pen.glyph()
     font['glyf'].glyphs['.notdef'] = glyph
 
-    # Set .notdef metrics (width, lsb)
     font['hmtx'].metrics['.notdef'] = (0, 0)
 
     return font
