@@ -52,21 +52,26 @@ def create_minimal_blank_font():
     font['hhea'].reserved3 = 0
 
     # maxp table
-    font['maxp'].tableVersion = 1.0
-    font['maxp'].numGlyphs = 1
-    font['maxp'].maxPoints = 0
-    font['maxp'].maxContours = 0
-    font['maxp'].maxCompositePoints = 0
-    font['maxp'].maxCompositeContours = 0
-    font['maxp'].maxZones = 1
-    font['maxp'].maxTwilightPoints = 0
-    font['maxp'].maxStorage = 0
-    font['maxp'].maxFunctionDefs = 0
-    font['maxp'].maxInstructionDefs = 0
-    font['maxp'].maxStackElements = 0
-    font['maxp'].maxSizeOfInstructions = 0
-    font['maxp'].maxComponentElements = 0
-    font['maxp'].maxComponentDepth = 0
+    from fontTools.ttLib.tables import _m_a_x_p
+
+maxp = _m_a_x_p.table__m_a_x_p()
+maxp.tableVersion = 1.0
+maxp.numGlyphs = 1
+maxp.maxPoints = 0
+maxp.maxContours = 0
+maxp.maxCompositePoints = 0
+maxp.maxCompositeContours = 0
+maxp.maxZones = 1
+maxp.maxTwilightPoints = 0
+maxp.maxStorage = 0
+maxp.maxFunctionDefs = 0
+maxp.maxInstructionDefs = 0
+maxp.maxStackElements = 0
+maxp.maxSizeOfInstructions = 0
+maxp.maxComponentElements = 0
+maxp.maxComponentDepth = 0
+
+font['maxp'] = maxp
 
     # name table empty
     font['name'].names = []
