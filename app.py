@@ -7,7 +7,7 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 import io
 
 st.set_page_config(layout="wide")
-st.title("✍️ Handwriting to Font — Label & Generate")
+st.title("✍️ Handwriting to Font")
 
 EM_SIZE = 1000
 SCALE_MULTIPLIER = 1.5
