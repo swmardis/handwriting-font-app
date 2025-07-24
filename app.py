@@ -13,17 +13,26 @@ st.title("✍️ Handwriting to Font")
 EM_SIZE = 1000
 SCALE_MULTIPLIER = 1.5
 
+# ------------------ Session State Setup ------------------
+if "drawn_images" not in st.session_state:
+    st.session_state.drawn_images = []
+if "drawn_labels" not in st.session_state:
+    st.session_state.drawn_labels = []
+
+# ------------------ Font Utils ------------------
+
 def create_font_from_template(template_path="template_font.ttf"):
     font = TTFont(template_path)
-    for g in list(font['glyf'].glyphs.keys()):
+    glyphs = font['glyf'].glyphs
+    for g in list(glyphs.keys()):
         if g != '.notdef':
-            del font['glyf'].glyphs[g]
+            del glyphs[g]
     for table in font['cmap'].tables:
         table.cmap.clear()
     hmtx_metrics = font['hmtx'].metrics
-    for key in list(hmtx_metrics.keys()):
-        if key != '.notdef':
-            del hmtx_metrics[key]
+    keys_to_remove = [k for k in hmtx_metrics if k != '.notdef']
+    for key in keys_to_remove:
+        del hmtx_metrics[key]
     return font
 
 def segment_image(image):
@@ -55,22 +64,12 @@ def glyph_from_image(img):
         pen.closePath()
     return pen.glyph()
 
-def crop_drawn_image(image_np):
-    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    _, thresh = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
-    coords = cv2.findNonZero(thresh)
-    if coords is not None:
-        x, y, w, h = cv2.boundingRect(coords)
-        return image_np[y:y+h, x:x+w]
-    return image_np
-
 def make_font(char_images, char_labels, template_path="template_font.ttf"):
     font = create_font_from_template(template_path)
     font.setGlyphOrder(['.notdef'] + char_labels)
     glyf = font['glyf']
     hmtx = font['hmtx']
     cmap_table = font['cmap'].tables[0]
-
     for label, img in zip(char_labels, char_images):
         glyph = glyph_from_image(img)
         glyf.glyphs[label] = glyph
@@ -79,53 +78,63 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
         advance_width = int(width * scale) + 80
         hmtx.metrics[label] = (advance_width, 0)
         cmap_table.cmap[ord(label)] = label
-
     font['maxp'].numGlyphs = len(char_labels) + 1
     font['hhea'].numberOfHMetrics = len(char_labels) + 1
     font['hhea'].ascent = int(EM_SIZE * SCALE_MULTIPLIER * 1.1)
     font['hhea'].descent = int(-EM_SIZE * SCALE_MULTIPLIER * 0.3)
-
     return font
 
-# ----------------------------
-# DRAW YOUR OWN CHARACTER FIRST
-# ----------------------------
-st.markdown("## ✏️ Draw Your Own Character")
-draw_col1, draw_col2 = st.columns([2, 1])
+def crop_drawn_image(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    _, thresh = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
+    coords = cv2.findNonZero(thresh)
+    if coords is not None:
+        x, y, w, h = cv2.boundingRect(coords)
+        return img[y:y+h, x:x+w]
+    return img
 
-with draw_col1:
-    canvas_result = st_canvas(
-        fill_color="rgba(255, 255, 255, 0)",
-        stroke_width=4,
-        stroke_color="#ffffff",  # White strokes
-        background_color="#1e1e1e",  # Dark canvas background
-        width=300,
-        height=300,
-        drawing_mode="freedraw",
-        key="canvas",
-    )
+# ------------------ Drawing Section ------------------
 
-with draw_col2:
-    drawn_images = []
-    drawn_labels = []
-    draw_label = st.text_input("Label for drawn character", max_chars=1)
-    if st.button("➕ Add Drawn Character"):
-        if canvas_result.image_data is not None and draw_label:
-            img = cv2.cvtColor(canvas_result.image_data.astype(np.uint8), cv2.COLOR_RGBA2RGB)
-            cropped = crop_drawn_image(img)
-            gray = cv2.cvtColor(cropped, cv2.COLOR_RGB2GRAY)
-            _, thresh = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
-            drawn_images.append(thresh)
-            drawn_labels.append(draw_label)
-            st.success(f"Added drawn character: {draw_label}")
+st.markdown("### ✏️ Draw a Character")
 
-# ----------------------------
-# IMAGE UPLOAD + SEGMENTATION
-# ----------------------------
-uploaded_file = st.file_uploader("Upload a handwriting scan (PNG/JPG)")
+draw_label = st.text_input("Character Label (e.g. A, b, 3)", max_chars=1)
 
-image_chars = []
-image_labels = []
+canvas_result = st_canvas(
+    fill_color="rgba(255, 255, 255, 0)",  # transparent fill
+    stroke_width=5,
+    stroke_color="#FFFFFF",  # White strokes
+    background_color="#000000",  # Black background
+    width=200,
+    height=200,
+    drawing_mode="freedraw",
+    key="canvas",
+)
+
+if st.button("➕ Add Drawn Character"):
+    if canvas_result.image_data is not None and draw_label:
+        img = cv2.cvtColor(canvas_result.image_data.astype(np.uint8), cv2.COLOR_RGBA2RGB)
+        cropped = crop_drawn_image(img)
+        gray = cv2.cvtColor(cropped, cv2.COLOR_RGB2GRAY)
+        _, thresh = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
+
+        st.session_state.drawn_images.append(thresh)
+        st.session_state.drawn_labels.append(draw_label)
+        st.success(f"Added drawn character: '{draw_label}'")
+
+if st.session_state.drawn_images:
+    st.write("### ✨ Drawn Characters Added:")
+    cols = st.columns(min(5, len(st.session_state.drawn_images)))
+    for i, (img, label) in enumerate(zip(st.session_state.drawn_images, st.session_state.drawn_labels)):
+        with cols[i % 5]:
+            st.image(img, width=60)
+            st.caption(f"'{label}'")
+
+# ------------------ Upload Section ------------------
+
+uploaded_file = st.file_uploader("📷 Or Upload a Handwriting Image (PNG/JPG)")
+
+char_images = []
+char_labels = []
 
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
@@ -138,27 +147,29 @@ if uploaded_file:
         st.warning("No characters detected. Try a clearer or higher-contrast image.")
     else:
         st.success(f"Detected {len(chars)} characters.")
-        image_chars = [c[0] for c in chars]
-        st.write("### Label each character:")
-        cols = st.columns(min(5, len(image_chars)))
-        for i, img in enumerate(image_chars):
+        char_images = [c[0] for c in chars]
+
+        st.write("### 🏷️ Label Each Character:")
+        cols = st.columns(min(5, len(char_images)))
+        for i, img in enumerate(char_images):
             with cols[i % 5]:
                 st.image(img, width=60)
                 label = st.text_input(f"Char #{i+1}", max_chars=1, key=f"label_{i}")
-                image_labels.append(label)
+                char_labels.append(label)
 
-# ----------------------------
-# FONT GENERATION
-# ----------------------------
+# ------------------ Generate Font ------------------
+
 if st.button("🎉 Generate Font"):
-    all_images = drawn_images + image_chars
-    all_labels = drawn_labels + image_labels
+    all_images = char_images + st.session_state.drawn_images
+    all_labels = char_labels + st.session_state.drawn_labels
 
     if any(len(l) != 1 for l in all_labels):
         st.error("All characters must be labeled with exactly one character.")
+    elif len(set(all_labels)) < len(all_labels):
+        st.error("Duplicate character labels detected. Each must be unique.")
     else:
         font = make_font(all_images, all_labels)
         buf = io.BytesIO()
         font.save(buf)
         buf.seek(0)
-        st.download_button("Download Your Font (.ttf)", buf, file_name="custom_font.ttf", mime="font/ttf")
+        st.download_button("⬇️ Download Your Font (.ttf)", buf, file_name="custom_font.ttf", mime="font/ttf")
