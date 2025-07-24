@@ -10,7 +10,7 @@ st.set_page_config(layout="wide")
 st.title("✍️ Handwriting to Font — Label & Generate")
 
 EM_SIZE = 1000
-SCALE_MULTIPLIER = 1.3  # Increase to make glyphs bigger
+SCALE_MULTIPLIER = 1.5
 
 def create_font_from_template(template_path="template_font.ttf"):
     font = TTFont(template_path)
@@ -46,6 +46,9 @@ def segment_image(image):
             chars.append((char_img, (x, y, w, h)))
     return chars
 
+def pil_image_from_np(np_img):
+    return Image.fromarray(255 - np_img)
+
 def glyph_from_image(img):
     contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     pen = TTGlyphPen(None)
@@ -54,54 +57,39 @@ def glyph_from_image(img):
     scale = EM_SIZE / img_height * SCALE_MULTIPLIER
 
     for cnt in contours:
-        if len(cnt) < 3:
+        points = cnt[:, 0]
+        if len(points) < 2:
             continue
-        cnt = cnt.squeeze()
-        if cnt.ndim != 2:
-            continue
-
-        flipped_scaled_points = [(x * scale, EM_SIZE * SCALE_MULTIPLIER - y * scale) for (x, y) in cnt]
-
-        pen.moveTo(flipped_scaled_points[0])
-        for point in flipped_scaled_points[1:]:
-            pen.lineTo(point)
+        pen.moveTo((int(points[0][0] * scale), int((img_height - points[0][1]) * scale)))
+        for pt in points[1:]:
+            x = int(pt[0] * scale)
+            y = int((img_height - pt[1]) * scale)
+            pen.lineTo((x, y))
         pen.closePath()
     return pen.glyph()
 
 def make_font(char_images, char_labels, template_path="template_font.ttf"):
     font = create_font_from_template(template_path)
+    font.setGlyphOrder(['.notdef'] + char_labels)
 
-    glyph_order = ['.notdef']
     glyf = font['glyf']
     hmtx = font['hmtx']
-    cmap_tables = font['cmap'].tables
+    cmap_table = font['cmap'].tables[0]
 
     for label, img in zip(char_labels, char_images):
-        if not label or len(label) != 1:
-            continue
-
-        glyph_order.append(label)
-
         glyph = glyph_from_image(img)
-
-        glyf[label] = glyph
+        glyf.glyphs[label] = glyph
 
         width = img.shape[1]
         scale = EM_SIZE / img.shape[0] * SCALE_MULTIPLIER
-        advance_width = int(width * scale) + 80  # increased sidebearing
-
+        advance_width = int(width * scale) + 80
         hmtx.metrics[label] = (advance_width, 0)
+        cmap_table.cmap[ord(label)] = label
 
-        for cmap_table in cmap_tables:
-            cmap_table.cmap[ord(label)] = label
-
-    font.setGlyphOrder(glyph_order)
-    font['maxp'].numGlyphs = len(glyph_order)
-    font['hhea'].numberOfHMetrics = len(glyph_order)
-
-    # Adjust ascent and descent for better vertical spacing
-    font['hhea'].ascent = int(EM_SIZE * SCALE_MULTIPLIER * 1.1)    # e.g. ~1430
-    font['hhea'].descent = int(-EM_SIZE * SCALE_MULTIPLIER * 0.3)  # e.g. ~-390
+    font['maxp'].numGlyphs = len(char_labels) + 1
+    font['hhea'].numberOfHMetrics = len(char_labels) + 1
+    font['hhea'].ascent = int(EM_SIZE * SCALE_MULTIPLIER * 1.1)
+    font['hhea'].descent = int(-EM_SIZE * SCALE_MULTIPLIER * 0.3)
 
     return font
 
