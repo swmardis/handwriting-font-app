@@ -46,32 +46,43 @@ def segment_image(image):
 def pil_image_from_np(np_img):
     return Image.fromarray(255 - np_img)
 
+def glyph_from_image(img):
+    # img: binary numpy array with foreground=white (255), background=black (0)
+    contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    pen = TTGlyphPen(None)
+
+    for cnt in contours:
+        if len(cnt) < 3:
+            continue
+        cnt = cnt.squeeze()
+        if cnt.ndim != 2:
+            continue
+
+        pen.moveTo(tuple(cnt[0]))
+        for point in cnt[1:]:
+            pen.lineTo(tuple(point))
+        pen.closePath()
+    return pen.glyph()
+
 def make_font(char_images, char_labels, template_path="template_font.ttf"):
     font = create_font_from_template(template_path)
 
     glyph_order = ['.notdef']
     glyf = font['glyf']
     hmtx = font['hmtx']
-
     cmap_tables = font['cmap'].tables
     glyph_set = font.getGlyphSet()
 
-    for i, (label, img) in enumerate(zip(char_labels, char_images)):
+    for label, img in zip(char_labels, char_images):
         if not label or len(label) != 1:
-            continue  # Skip unlabeled or invalid
+            continue
 
         glyph_order.append(label)
 
-        # Create a simple square glyph (temporary visual)
-        width, height = img.shape[1], img.shape[0]
-        pen = TTGlyphPen(glyph_set)
-        offset = 50
-        pen.moveTo((offset, offset))
-        pen.lineTo((offset, height - offset))
-        pen.lineTo((width - offset, height - offset))
-        pen.lineTo((width - offset, offset))
-        pen.closePath()
-        glyph = pen.glyph()
+        # Invert image to have foreground=white, background=black if needed
+        binary_img = 255 - img
+
+        glyph = glyph_from_image(binary_img)
 
         glyf[label] = glyph
         hmtx.metrics[label] = (1000, 0)
