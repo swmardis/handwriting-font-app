@@ -2,16 +2,62 @@ import streamlit as st
 import numpy as np
 import cv2
 from PIL import Image
-from fontTools.ttLib import TTFont
+from fontTools.ttLib import TTFont, newTable
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.ttLib.tables import _g_l_y_f, _h_m_t_x, _c_m_a_p, _m_a_x_p, _h_h_e_a
 import io
-import os
-
-TEMPLATE_FONT_PATH = "blank_template.ttf"
 
 st.set_page_config(layout="wide")
 st.title("✍️ Handwriting to Font — Label & Generate")
+
+# --- Create minimal blank font in memory ---
+def create_minimal_blank_font():
+    font = TTFont()
+
+    font.setGlyphOrder(['.notdef'])
+
+    for tag in ['head', 'hhea', 'maxp', 'name', 'OS/2', 'post', 'cmap', 'glyf', 'hmtx']:
+        font[tag] = newTable(tag)
+
+    # Set minimal required values
+    font['head'].unitsPerEm = 1000
+    font['head'].xMin = 0
+    font['head'].yMin = 0
+    font['head'].xMax = 1000
+    font['head'].yMax = 1000
+    font['head'].indexToLocFormat = 0
+    font['head'].glyphDataFormat = 0
+
+    font['hhea'].ascent = 800
+    font['hhea'].descent = -200
+    font['hhea'].lineGap = 0
+    font['hhea'].numberOfHMetrics = 1
+
+    font['maxp'].numGlyphs = 1
+
+    font['name'].names = []
+
+    font['OS/2'].usFirstCharIndex = 0
+    font['OS/2'].usLastCharIndex = 0
+    font['OS/2'].sTypoAscender = 800
+    font['OS/2'].sTypoDescender = -200
+    font['OS/2'].usWinAscent = 800
+    font['OS/2'].usWinDescent = 200
+
+    font['post'].formatType = 3.0
+
+    # Setup cmap table with empty cmap subtable
+    from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
+    cmap_subtable = cmap_format_4(4)
+    cmap_subtable.platformID = 3
+    cmap_subtable.platEncID = 1
+    cmap_subtable.language = 0
+    cmap_subtable.cmap = {}
+    font['cmap'].tables = [cmap_subtable]
+
+    font['glyf'].glyphs = {}
+    font['hmtx'].metrics = {}
+
+    return font
 
 # --- Character Segmentation ---
 def segment_image(image):
@@ -41,22 +87,9 @@ def create_glyph(width, height):
     return pen.glyph()
 
 # --- Font Generation ---
-def make_font_from_template(char_images, char_labels):
-    font = TTFont(TEMPLATE_FONT_PATH)
+def make_font(char_images, char_labels):
+    font = create_minimal_blank_font()
     font.setGlyphOrder(['.notdef'] + char_labels)
-
-    # Add missing tables
-    if 'glyf' not in font:
-        font['glyf'] = _g_l_y_f.table__glyf()
-    if 'hmtx' not in font:
-        font['hmtx'] = _h_m_t_x.table__hmtx()
-    if 'cmap' not in font:
-        font['cmap'] = _c_m_a_p.table__cmap()
-        font['cmap'].tables = [_c_m_a_p.cmap_format_4(platformID=3, platEncID=1, language=0, cmap={})]
-    if 'maxp' not in font:
-        font['maxp'] = _m_a_x_p.table__maxp()
-    if 'hhea' not in font:
-        font['hhea'] = _h_h_e_a.table__hhea()
 
     glyf = font['glyf']
     hmtx = font['hmtx']
@@ -104,10 +137,8 @@ if uploaded_file:
         if st.button("🎉 Generate Font"):
             if any(len(l) != 1 for l in char_labels):
                 st.error("All characters must be labeled with exactly one character.")
-            elif not os.path.exists(TEMPLATE_FONT_PATH):
-                st.error("Template font missing. Please upload `blank_template.ttf`.")
             else:
-                font = make_font_from_template(char_images, char_labels)
+                font = make_font(char_images, char_labels)
                 buf = io.BytesIO()
                 font.save(buf)
                 buf.seek(0)
