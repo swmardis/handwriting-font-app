@@ -43,15 +43,14 @@ def segment_image(image):
             chars.append((char_img, (x, y, w, h)))
     return chars
 
-def pil_image_from_np(np_img):
-    return Image.fromarray(255 - np_img)
+EM_SIZE = 1000  # font em square size
 
 def glyph_from_image(img):
-    # img: binary numpy array with foreground=white (255), background=black (0)
     contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     pen = TTGlyphPen(None)
 
-    height = img.shape[0]
+    img_height = img.shape[0]
+    scale = EM_SIZE / img_height
 
     for cnt in contours:
         if len(cnt) < 3:
@@ -60,11 +59,10 @@ def glyph_from_image(img):
         if cnt.ndim != 2:
             continue
 
-        # Flip Y axis to convert from image coords to font coords
-        flipped_points = [(x, height - y) for (x, y) in cnt]
+        flipped_scaled_points = [(x * scale, EM_SIZE - y * scale) for (x, y) in cnt]
 
-        pen.moveTo(flipped_points[0])
-        for point in flipped_points[1:]:
+        pen.moveTo(flipped_scaled_points[0])
+        for point in flipped_scaled_points[1:]:
             pen.lineTo(point)
         pen.closePath()
     return pen.glyph()
@@ -76,7 +74,6 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
     glyf = font['glyf']
     hmtx = font['hmtx']
     cmap_tables = font['cmap'].tables
-    glyph_set = font.getGlyphSet()
 
     for label, img in zip(char_labels, char_images):
         if not label or len(label) != 1:
@@ -84,11 +81,15 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
 
         glyph_order.append(label)
 
-        # Pass img directly (no inversion)
         glyph = glyph_from_image(img)
 
         glyf[label] = glyph
-        hmtx.metrics[label] = (1000, 0)
+
+        width = img.shape[1]
+        scale = EM_SIZE / img.shape[0]
+        advance_width = int(width * scale) + 50  # Add a little sidebearing
+
+        hmtx.metrics[label] = (advance_width, 0)
 
         for cmap_table in cmap_tables:
             cmap_table.cmap[ord(label)] = label
