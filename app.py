@@ -51,6 +51,8 @@ def glyph_from_image(img):
     contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     pen = TTGlyphPen(None)
 
+    height = img.shape[0]
+
     for cnt in contours:
         if len(cnt) < 3:
             continue
@@ -58,9 +60,12 @@ def glyph_from_image(img):
         if cnt.ndim != 2:
             continue
 
-        pen.moveTo(tuple(cnt[0]))
-        for point in cnt[1:]:
-            pen.lineTo(tuple(point))
+        # Flip Y axis to convert from image coords to font coords
+        flipped_points = [(x, height - y) for (x, y) in cnt]
+
+        pen.moveTo(flipped_points[0])
+        for point in flipped_points[1:]:
+            pen.lineTo(point)
         pen.closePath()
     return pen.glyph()
 
@@ -79,7 +84,7 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
 
         glyph_order.append(label)
 
-        # Invert image to have foreground=white, background=black if needed
+        # Invert image so foreground=white, background=black if needed
         binary_img = 255 - img
 
         glyph = glyph_from_image(binary_img)
