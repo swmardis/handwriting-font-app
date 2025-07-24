@@ -84,10 +84,8 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
 
         glyph_order.append(label)
 
-        # Invert image so foreground=white, background=black if needed
-        binary_img = 255 - img
-
-        glyph = glyph_from_image(binary_img)
+        # Pass img directly (no inversion)
+        glyph = glyph_from_image(img)
 
         glyf[label] = glyph
         hmtx.metrics[label] = (1000, 0)
