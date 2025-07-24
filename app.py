@@ -4,6 +4,7 @@ import cv2
 from PIL import Image
 from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib.tables import _g_l_y_f, _h_m_t_x, _c_m_a_p, _m_a_x_p, _h_h_e_a
 import io
 import os
 
@@ -44,9 +45,22 @@ def make_font_from_template(char_images, char_labels):
     font = TTFont(TEMPLATE_FONT_PATH)
     font.setGlyphOrder(['.notdef'] + char_labels)
 
+    # Add missing tables
+    if 'glyf' not in font:
+        font['glyf'] = _g_l_y_f.table__glyf()
+    if 'hmtx' not in font:
+        font['hmtx'] = _h_m_t_x.table__hmtx()
+    if 'cmap' not in font:
+        font['cmap'] = _c_m_a_p.table__cmap()
+        font['cmap'].tables = [_c_m_a_p.cmap_format_4(platformID=3, platEncID=1, language=0, cmap={})]
+    if 'maxp' not in font:
+        font['maxp'] = _m_a_x_p.table__maxp()
+    if 'hhea' not in font:
+        font['hhea'] = _h_h_e_a.table__hhea()
+
     glyf = font['glyf']
     hmtx = font['hmtx']
-    cmap = {}
+    cmap_table = font['cmap'].tables[0]
 
     for label, img in zip(char_labels, char_images):
         pil_img = pil_image_from_np(img)
@@ -54,9 +68,8 @@ def make_font_from_template(char_images, char_labels):
         glyph = create_glyph(width, height)
         glyf.glyphs[label] = glyph
         hmtx.metrics[label] = (width, 0)
-        cmap[ord(label)] = label
+        cmap_table.cmap[ord(label)] = label
 
-    font['cmap'].tables[0].cmap.update(cmap)
     font['maxp'].numGlyphs = len(char_labels) + 1
     font['hhea'].numberOfHMetrics = len(char_labels) + 1
 
