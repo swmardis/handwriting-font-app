@@ -8,34 +8,25 @@ from streamlit_drawable_canvas import st_canvas
 import io
 
 st.set_page_config(layout="wide")
-st.title("✍️ Full Font Creator — Draw or Upload Each Character")
+st.title("✍️ Handwriting to Font")
 
 EM_SIZE = 1000
 SCALE_MULTIPLIER = 1.5
 
-# Full character set: uppercase, lowercase, digits, punctuation
-CHAR_SET = list(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    "abcdefghijklmnopqrstuvwxyz"
-    "0123456789"
-    ".,!?;:-_'\"@#$%&*()[]{}<>/\\|+=~`^"
-)
-
-# Initialize session state dicts to store images for characters
-if "char_images" not in st.session_state:
-    st.session_state.char_images = {c: None for c in CHAR_SET}
-
 def create_font_from_template(template_path="template_font.ttf"):
     font = TTFont(template_path)
 
+    # Remove all glyphs except .notdef
     glyphs = font['glyf'].glyphs
     for g in list(glyphs.keys()):
         if g != '.notdef':
             del glyphs[g]
 
+    # Clear cmap subtables
     for table in font['cmap'].tables:
         table.cmap.clear()
 
+    # Reset hmtx metrics except .notdef
     hmtx_metrics = font['hmtx'].metrics
     keys_to_remove = [k for k in hmtx_metrics if k != '.notdef']
     for key in keys_to_remove:
@@ -43,9 +34,23 @@ def create_font_from_template(template_path="template_font.ttf"):
 
     return font
 
+def segment_image(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    chars = []
+    for cnt in sorted(contours, key=lambda x: cv2.boundingRect(x)[0]):
+        x, y, w, h = cv2.boundingRect(cnt)
+        if w * h > 100:
+            char_img = thresh[y:y+h, x:x+w]
+            chars.append((char_img, (x, y, w, h)))
+    return chars
+
 def glyph_from_image(img):
     contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     pen = TTGlyphPen(None)
+
     img_height = img.shape[0]
     scale = EM_SIZE / img_height * SCALE_MULTIPLIER
 
@@ -60,13 +65,6 @@ def glyph_from_image(img):
             pen.lineTo((x, y))
         pen.closePath()
     return pen.glyph()
-
-def process_image_for_font(img):
-    # Convert RGBA or RGB image (PIL) to binary numpy array for glyph generation
-    img = img.convert("L")  # grayscale
-    np_img = np.array(img)
-    _, thresh = cv2.threshold(np_img, 200, 255, cv2.THRESH_BINARY_INV)
-    return thresh
 
 def make_font(char_images, char_labels, template_path="template_font.ttf"):
     font = create_font_from_template(template_path)
@@ -93,54 +91,62 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
 
     return font
 
-st.write("### Input your characters below: For each character you can either upload an image or draw it.")
+uploaded_file = st.file_uploader("Upload a handwriting scan (PNG/JPG)")
 
-# Layout: split characters into columns for compactness
-cols_per_row = 5
-for i in range(0, len(CHAR_SET), cols_per_row):
-    cols = st.columns(cols_per_row)
-    for j, c in enumerate(CHAR_SET[i:i+cols_per_row]):
-        with cols[j]:
-            st.markdown(f"**'{c}'**")
-            # Upload input
-            uploaded = st.file_uploader(f"Upload '{c}'", type=['png','jpg','jpeg'], key=f"upload_{c}", help="Upload an image of this character")
-            # Draw canvas input
-            canvas_result = st_canvas(
-                fill_color="white",
-                stroke_width=10,
-                stroke_color="black",
-                background_color="white",
-                height=150,
-                width=150,
-                drawing_mode="freedraw",
-                key=f"canvas_{c}",
-            )
-            # Decide which input to use: Upload preferred over canvas if both exist
-            img_for_char = None
-            if uploaded is not None:
-                try:
-                    pil_img = Image.open(uploaded).convert("L")
-                    img_for_char = process_image_for_font(pil_img)
-                except:
-                    st.error("Invalid image")
-            elif canvas_result.image_data is not None:
-                raw = canvas_result.image_data.astype(np.uint8)
-                pil_img = Image.fromarray(cv2.cvtColor(raw, cv2.COLOR_RGBA2RGB))
-                img_for_char = process_image_for_font(pil_img)
+char_images = []
+char_labels = []
 
-            # Save processed image or None
-            st.session_state.char_images[c] = img_for_char
+if uploaded_file:
+    image = Image.open(uploaded_file).convert("RGB")
+    image_np = np.array(image)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-if st.button("🎉 Generate Font"):
-    # Filter out empty inputs
-    filled_chars = [c for c, img in st.session_state.char_images.items() if img is not None]
-    filled_images = [img for img in st.session_state.char_images.values() if img is not None]
+    chars = segment_image(image_np)
 
-    if not filled_chars:
-        st.error("Please provide at least one character (draw or upload).")
+    if not chars:
+        st.warning("No characters detected. Try a clearer or higher-contrast image.")
     else:
-        font = make_font(filled_images, filled_chars)
+        st.success(f"Detected {len(chars)} characters.")
+        char_images = [c[0] for c in chars]
+
+        st.write("### Label each character:")
+        cols = st.columns(min(5, len(char_images)))
+        for i, img in enumerate(char_images):
+            with cols[i % 5]:
+                st.image(img, width=60)
+                label = st.text_input(f"Char #{i+1}", max_chars=1, key=f"label_{i}")
+                char_labels.append(label)
+
+# --- DRAWING CANVAS ---
+st.write("### Or draw your own character")
+
+canvas_result = st_canvas(
+    fill_color="white",
+    stroke_width=10,
+    stroke_color="black",
+    background_color="white",
+    height=200,
+    width=200,
+    drawing_mode="freedraw",
+    key="canvas",
+)
+
+draw_label = st.text_input("Label for drawn character", max_chars=1, key="draw_label")
+
+if canvas_result.image_data is not None and draw_label:
+    drawn_image = canvas_result.image_data.astype(np.uint8)
+    gray = cv2.cvtColor(drawn_image, cv2.COLOR_RGBA2GRAY)
+    _, binary = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
+    char_images.append(binary)
+    char_labels.append(draw_label)
+
+# --- GENERATE FONT ---
+if char_images and char_labels and st.button("🎉 Generate Font"):
+    if any(len(l) != 1 for l in char_labels):
+        st.error("All characters must be labeled with exactly one character.")
+    else:
+        font = make_font(char_images, char_labels)
         buf = io.BytesIO()
         font.save(buf)
         buf.seek(0)
-        st.download_button("⬇️ Download Your Font (.ttf)", buf, file_name="custom_font.ttf", mime="font/ttf")
+        st.download_button("Download Your Font (.ttf)", buf, file_name="custom_font.ttf", mime="font/ttf")
