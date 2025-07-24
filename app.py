@@ -9,16 +9,17 @@ import io
 st.set_page_config(layout="wide")
 st.title("✍️ Handwriting to Font — Label & Generate")
 
-# --- Create minimal blank font in memory ---
 def create_minimal_blank_font():
     font = TTFont()
 
+    # Set initial glyph order with .notdef
     font.setGlyphOrder(['.notdef'])
 
+    # Add required tables
     for tag in ['head', 'hhea', 'maxp', 'name', 'OS/2', 'post', 'cmap', 'glyf', 'hmtx']:
         font[tag] = newTable(tag)
 
-    # Set minimal required values
+    # Set minimal values for font tables
     font['head'].unitsPerEm = 1000
     font['head'].xMin = 0
     font['head'].yMin = 0
@@ -57,9 +58,19 @@ def create_minimal_blank_font():
     font['glyf'].glyphs = {}
     font['hmtx'].metrics = {}
 
+    # Create and add the empty .notdef glyph
+    pen = TTGlyphPen(None)
+    pen.moveTo((0, 0))
+    pen.lineTo((0, 0))
+    pen.closePath()
+    glyph = pen.glyph()
+    font['glyf'].glyphs['.notdef'] = glyph
+
+    # Set .notdef metrics (width, lsb)
+    font['hmtx'].metrics['.notdef'] = (0, 0)
+
     return font
 
-# --- Character Segmentation ---
 def segment_image(image):
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
@@ -76,7 +87,6 @@ def segment_image(image):
 def pil_image_from_np(np_img):
     return Image.fromarray(255 - np_img)
 
-# --- Glyph Creation ---
 def create_glyph(width, height):
     pen = TTGlyphPen(None)
     pen.moveTo((0, 0))
@@ -86,7 +96,6 @@ def create_glyph(width, height):
     pen.closePath()
     return pen.glyph()
 
-# --- Font Generation ---
 def make_font(char_images, char_labels):
     font = create_minimal_blank_font()
     font.setGlyphOrder(['.notdef'] + char_labels)
@@ -108,7 +117,6 @@ def make_font(char_images, char_labels):
 
     return font
 
-# --- Streamlit UI ---
 uploaded_file = st.file_uploader("Upload a handwriting scan (PNG/JPG)")
 
 if uploaded_file:
