@@ -13,13 +13,13 @@ st.title("✍️ Handwriting to Font")
 EM_SIZE = 1000
 SCALE_MULTIPLIER = 1.5
 
-# ------------------ Session State Setup ------------------
+# ------------------ Session State ------------------
 if "drawn_images" not in st.session_state:
     st.session_state.drawn_images = []
 if "drawn_labels" not in st.session_state:
     st.session_state.drawn_labels = []
 
-# ------------------ Font Utils ------------------
+# ------------------ Font Tools ------------------
 
 def create_font_from_template(template_path="template_font.ttf"):
     font = TTFont(template_path)
@@ -30,28 +30,17 @@ def create_font_from_template(template_path="template_font.ttf"):
     for table in font['cmap'].tables:
         table.cmap.clear()
     hmtx_metrics = font['hmtx'].metrics
-    keys_to_remove = [k for k in hmtx_metrics if k != '.notdef']
-    for key in keys_to_remove:
-        del hmtx_metrics[key]
+    for k in list(hmtx_metrics.keys()):
+        if k != ".notdef":
+            del hmtx_metrics[k]
     return font
-
-def segment_image(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    chars = []
-    for cnt in sorted(contours, key=lambda x: cv2.boundingRect(x)[0]):
-        x, y, w, h = cv2.boundingRect(cnt)
-        if w * h > 100:
-            char_img = thresh[y:y+h, x:x+w]
-            chars.append((char_img, (x, y, w, h)))
-    return chars
 
 def glyph_from_image(img):
     contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     pen = TTGlyphPen(None)
     img_height = img.shape[0]
     scale = EM_SIZE / img_height * SCALE_MULTIPLIER
+
     for cnt in contours:
         points = cnt[:, 0]
         if len(points) < 2:
@@ -70,7 +59,10 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
     glyf = font['glyf']
     hmtx = font['hmtx']
     cmap_table = font['cmap'].tables[0]
+
     for label, img in zip(char_labels, char_images):
+        if img is None or img.shape[0] == 0 or img.shape[1] == 0:
+            continue  # Skip invalid
         glyph = glyph_from_image(img)
         glyf.glyphs[label] = glyph
         width = img.shape[1]
@@ -78,60 +70,69 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
         advance_width = int(width * scale) + 80
         hmtx.metrics[label] = (advance_width, 0)
         cmap_table.cmap[ord(label)] = label
+
     font['maxp'].numGlyphs = len(char_labels) + 1
     font['hhea'].numberOfHMetrics = len(char_labels) + 1
     font['hhea'].ascent = int(EM_SIZE * SCALE_MULTIPLIER * 1.1)
     font['hhea'].descent = int(-EM_SIZE * SCALE_MULTIPLIER * 0.3)
     return font
 
-def crop_drawn_image(img):
+# ------------------ Crop (Safe) ------------------
+
+def safe_crop(img):
+    """Crop black/white canvas to bounding box, return grayscale mask."""
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     _, thresh = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
     coords = cv2.findNonZero(thresh)
-    if coords is not None:
-        x, y, w, h = cv2.boundingRect(coords)
-        return img[y:y+h, x:x+w]
-    return img
+    if coords is None:
+        return None  # completely blank
+    x, y, w, h = cv2.boundingRect(coords)
+    cropped = thresh[y:y+h, x:x+w]
+    return cropped
 
-# ------------------ Drawing Section ------------------
+# ------------------ Draw Section ------------------
 
-st.markdown("### ✏️ Draw a Character")
+st.subheader("✏️ Draw a Character")
 
 draw_label = st.text_input("Character Label (e.g. A, b, 3)", max_chars=1)
 
 canvas_result = st_canvas(
-    fill_color="rgba(255, 255, 255, 0)",  # transparent fill
+    fill_color="rgba(255, 255, 255, 0)",  # Transparent fill
     stroke_width=5,
-    stroke_color="#FFFFFF",  # White strokes
-    background_color="#000000",  # Black background
+    stroke_color="#FFFFFF",              # White ink
+    background_color="#000000",          # Black background
     width=200,
     height=200,
     drawing_mode="freedraw",
-    key="canvas",
+    key="canvas"
 )
 
 if st.button("➕ Add Drawn Character"):
     if canvas_result.image_data is not None and draw_label:
-        img = cv2.cvtColor(canvas_result.image_data.astype(np.uint8), cv2.COLOR_RGBA2RGB)
-        cropped = crop_drawn_image(img)
-        gray = cv2.cvtColor(cropped, cv2.COLOR_RGB2GRAY)
-        _, thresh = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
+        raw = canvas_result.image_data.astype(np.uint8)
+        img_rgb = cv2.cvtColor(raw, cv2.COLOR_RGBA2RGB)
+        cropped = safe_crop(img_rgb)
 
-        st.session_state.drawn_images.append(thresh)
-        st.session_state.drawn_labels.append(draw_label)
-        st.success(f"Added drawn character: '{draw_label}'")
+        if cropped is None:
+            st.warning("Canvas is empty. Draw something before adding.")
+        else:
+            st.session_state.drawn_images.append(cropped)
+            st.session_state.drawn_labels.append(draw_label)
+            st.success(f"✅ Added drawn character: '{draw_label}'")
+
+# ------------------ Display Drawn ------------------
 
 if st.session_state.drawn_images:
-    st.write("### ✨ Drawn Characters Added:")
+    st.write("### 🖼️ Drawn Characters")
     cols = st.columns(min(5, len(st.session_state.drawn_images)))
     for i, (img, label) in enumerate(zip(st.session_state.drawn_images, st.session_state.drawn_labels)):
         with cols[i % 5]:
             st.image(img, width=60)
             st.caption(f"'{label}'")
 
-# ------------------ Upload Section ------------------
+# ------------------ Upload Image ------------------
 
-uploaded_file = st.file_uploader("📷 Or Upload a Handwriting Image (PNG/JPG)")
+uploaded_file = st.file_uploader("📷 Or Upload Handwriting Image (PNG/JPG)")
 
 char_images = []
 char_labels = []
@@ -141,15 +142,27 @@ if uploaded_file:
     image_np = np.array(image)
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
+    def segment_image(image):
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        chars = []
+        for cnt in sorted(contours, key=lambda x: cv2.boundingRect(x)[0]):
+            x, y, w, h = cv2.boundingRect(cnt)
+            if w * h > 100:
+                char_img = thresh[y:y+h, x:x+w]
+                chars.append((char_img, (x, y, w, h)))
+        return chars
+
     chars = segment_image(image_np)
 
     if not chars:
-        st.warning("No characters detected. Try a clearer or higher-contrast image.")
+        st.warning("No characters detected.")
     else:
         st.success(f"Detected {len(chars)} characters.")
         char_images = [c[0] for c in chars]
 
-        st.write("### 🏷️ Label Each Character:")
+        st.write("### 🏷️ Label Each Character")
         cols = st.columns(min(5, len(char_images)))
         for i, img in enumerate(char_images):
             with cols[i % 5]:
@@ -166,7 +179,7 @@ if st.button("🎉 Generate Font"):
     if any(len(l) != 1 for l in all_labels):
         st.error("All characters must be labeled with exactly one character.")
     elif len(set(all_labels)) < len(all_labels):
-        st.error("Duplicate character labels detected. Each must be unique.")
+        st.error("Duplicate character labels detected.")
     else:
         font = make_font(all_images, all_labels)
         buf = io.BytesIO()
