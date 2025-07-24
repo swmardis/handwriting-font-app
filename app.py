@@ -14,10 +14,11 @@ def create_minimal_blank_font():
 
     font.setGlyphOrder(['.notdef'])
 
+    # Add required tables
     for tag in ['head', 'hhea', 'maxp', 'name', 'OS/2', 'post', 'cmap', 'glyf', 'hmtx']:
         font[tag] = newTable(tag)
 
-    # Set minimal values for head table — including all required fields
+    # head table
     font['head'].unitsPerEm = 1000
     font['head'].xMin = 0
     font['head'].yMin = 0
@@ -33,24 +34,65 @@ def create_minimal_blank_font():
     font['head'].indexToLocFormat = 0
     font['head'].glyphDataFormat = 0
 
+    # hhea table
     font['hhea'].ascent = 800
     font['hhea'].descent = -200
     font['hhea'].lineGap = 0
     font['hhea'].numberOfHMetrics = 1
+    font['hhea'].advanceWidthMax = 1000
+    font['hhea'].minLeftSideBearing = 0
+    font['hhea'].minRightSideBearing = 0
+    font['hhea'].xMaxExtent = 1000
+    font['hhea'].caretSlopeRise = 1
+    font['hhea'].caretSlopeRun = 0
+    font['hhea'].caretOffset = 0
+    font['hhea'].reserved0 = 0
+    font['hhea'].reserved1 = 0
+    font['hhea'].reserved2 = 0
+    font['hhea'].reserved3 = 0
 
+    # maxp table
+    font['maxp'].tableVersion = 0x00010000
     font['maxp'].numGlyphs = 1
+    font['maxp'].maxPoints = 0
+    font['maxp'].maxContours = 0
+    font['maxp'].maxCompositePoints = 0
+    font['maxp'].maxCompositeContours = 0
+    font['maxp'].maxZones = 1
+    font['maxp'].maxTwilightPoints = 0
+    font['maxp'].maxStorage = 0
+    font['maxp'].maxFunctionDefs = 0
+    font['maxp'].maxInstructionDefs = 0
+    font['maxp'].maxStackElements = 0
+    font['maxp'].maxSizeOfInstructions = 0
+    font['maxp'].maxComponentElements = 0
+    font['maxp'].maxComponentDepth = 0
 
+    # name table empty
     font['name'].names = []
 
+    # OS/2 table minimal
     font['OS/2'].usFirstCharIndex = 0
     font['OS/2'].usLastCharIndex = 0
     font['OS/2'].sTypoAscender = 800
     font['OS/2'].sTypoDescender = -200
     font['OS/2'].usWinAscent = 800
     font['OS/2'].usWinDescent = 200
+    font['OS/2'].fsSelection = 0
+    font['OS/2'].panose = b'\x00'*10
+    font['OS/2'].achVendID = 'NONE'
 
+    # post table minimal
     font['post'].formatType = 3.0
+    font['post'].underlinePosition = 0
+    font['post'].underlineThickness = 0
+    font['post'].isFixedPitch = 0
+    font['post'].minMemType42 = 0
+    font['post'].maxMemType42 = 0
+    font['post'].minMemType1 = 0
+    font['post'].maxMemType1 = 0
 
+    # cmap table with valid subtable
     from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
     cmap_subtable = cmap_format_4(4)
     cmap_subtable.platformID = 3
@@ -62,7 +104,7 @@ def create_minimal_blank_font():
     font['glyf'].glyphs = {}
     font['hmtx'].metrics = {}
 
-    # Add empty .notdef glyph
+    # .notdef glyph empty
     pen = TTGlyphPen(None)
     pen.moveTo((0, 0))
     pen.lineTo((0, 0))
