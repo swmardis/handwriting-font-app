@@ -9,6 +9,9 @@ import io
 st.set_page_config(layout="wide")
 st.title("✍️ Handwriting to Font — Label & Generate")
 
+EM_SIZE = 1000
+SCALE_MULTIPLIER = 1.3  # Increase to make glyphs bigger
+
 def create_font_from_template(template_path="template_font.ttf"):
     font = TTFont(template_path)
 
@@ -43,14 +46,12 @@ def segment_image(image):
             chars.append((char_img, (x, y, w, h)))
     return chars
 
-EM_SIZE = 1000  # font em square size
-
 def glyph_from_image(img):
     contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     pen = TTGlyphPen(None)
 
     img_height = img.shape[0]
-    scale = EM_SIZE / img_height
+    scale = EM_SIZE / img_height * SCALE_MULTIPLIER
 
     for cnt in contours:
         if len(cnt) < 3:
@@ -59,7 +60,7 @@ def glyph_from_image(img):
         if cnt.ndim != 2:
             continue
 
-        flipped_scaled_points = [(x * scale, EM_SIZE - y * scale) for (x, y) in cnt]
+        flipped_scaled_points = [(x * scale, EM_SIZE * SCALE_MULTIPLIER - y * scale) for (x, y) in cnt]
 
         pen.moveTo(flipped_scaled_points[0])
         for point in flipped_scaled_points[1:]:
@@ -86,8 +87,8 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
         glyf[label] = glyph
 
         width = img.shape[1]
-        scale = EM_SIZE / img.shape[0]
-        advance_width = int(width * scale) + 50  # Add a little sidebearing
+        scale = EM_SIZE / img.shape[0] * SCALE_MULTIPLIER
+        advance_width = int(width * scale) + 80  # increased sidebearing
 
         hmtx.metrics[label] = (advance_width, 0)
 
@@ -97,6 +98,10 @@ def make_font(char_images, char_labels, template_path="template_font.ttf"):
     font.setGlyphOrder(glyph_order)
     font['maxp'].numGlyphs = len(glyph_order)
     font['hhea'].numberOfHMetrics = len(glyph_order)
+
+    # Adjust ascent and descent for better vertical spacing
+    font['hhea'].ascent = int(EM_SIZE * SCALE_MULTIPLIER * 1.1)    # e.g. ~1430
+    font['hhea'].descent = int(-EM_SIZE * SCALE_MULTIPLIER * 0.3)  # e.g. ~-390
 
     return font
 
