@@ -52,7 +52,7 @@ def create_minimal_blank_font():
     font['hhea'].reserved3 = 0
 
     # maxp table
-    font['maxp'].tableVersion = 0x00010000
+    font['maxp'].tableVersion = 1.0
     font['maxp'].numGlyphs = 1
     font['maxp'].maxPoints = 0
     font['maxp'].maxContours = 0
