@@ -46,33 +46,42 @@ def segment_image(image):
 def pil_image_from_np(np_img):
     return Image.fromarray(255 - np_img)
 
-def create_glyph(width, height):
-    pen = TTGlyphPen(None)
-    pen.moveTo((0, 0))
-    pen.lineTo((width, 0))
-    pen.lineTo((width, height))
-    pen.lineTo((0, height))
-    pen.closePath()
-    return pen.glyph()
-
 def make_font(char_images, char_labels, template_path="template_font.ttf"):
     font = create_font_from_template(template_path)
-    font.setGlyphOrder(['.notdef'] + char_labels)
 
+    glyph_order = ['.notdef']
     glyf = font['glyf']
     hmtx = font['hmtx']
-    cmap_table = font['cmap'].tables[0]
 
-    for label, img in zip(char_labels, char_images):
-        pil_img = pil_image_from_np(img)
-        width, height = pil_img.size
-        glyph = create_glyph(width, height)
-        glyf.glyphs[label] = glyph
-        hmtx.metrics[label] = (width, 0)
-        cmap_table.cmap[ord(label)] = label
+    cmap_tables = font['cmap'].tables
+    glyph_set = font.getGlyphSet()
 
-    font['maxp'].numGlyphs = len(char_labels) + 1
-    font['hhea'].numberOfHMetrics = len(char_labels) + 1
+    for i, (label, img) in enumerate(zip(char_labels, char_images)):
+        if not label or len(label) != 1:
+            continue  # Skip unlabeled or invalid
+
+        glyph_order.append(label)
+
+        # Create a simple square glyph (temporary visual)
+        width, height = img.shape[1], img.shape[0]
+        pen = TTGlyphPen(glyph_set)
+        offset = 50
+        pen.moveTo((offset, offset))
+        pen.lineTo((offset, height - offset))
+        pen.lineTo((width - offset, height - offset))
+        pen.lineTo((width - offset, offset))
+        pen.closePath()
+        glyph = pen.glyph()
+
+        glyf[label] = glyph
+        hmtx.metrics[label] = (1000, 0)
+
+        for cmap_table in cmap_tables:
+            cmap_table.cmap[ord(label)] = label
+
+    font.setGlyphOrder(glyph_order)
+    font['maxp'].numGlyphs = len(glyph_order)
+    font['hhea'].numberOfHMetrics = len(glyph_order)
 
     return font
 
