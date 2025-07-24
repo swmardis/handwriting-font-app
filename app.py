@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 import cv2
 from PIL import Image
-from fontTools.ttLib import TTFont
+from fontTools.ttLib import TTFont, getTableModule
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 import io
 
@@ -39,8 +39,8 @@ def make_font(char_images, char_labels):
     glyph_order = ['.notdef'] + char_labels
     font.setGlyphOrder(glyph_order)
 
-    # Create required tables
-    font['head'] = font.newTable('head')
+    # Use getTableModule for compatibility
+    font['head'] = getTableModule('head').table__head()
     font['head'].unitsPerEm = 1000
     font['head'].xMin = 0
     font['head'].yMin = 0
@@ -49,16 +49,16 @@ def make_font(char_images, char_labels):
     font['head'].indexToLocFormat = 0
     font['head'].glyphDataFormat = 0
 
-    font['hhea'] = font.newTable('hhea')
+    font['hhea'] = getTableModule('hhea').table__hhea()
     font['hhea'].ascent = 800
     font['hhea'].descent = -200
     font['hhea'].lineGap = 0
     font['hhea'].numberOfHMetrics = len(glyph_order)
 
-    font['maxp'] = font.newTable('maxp')
+    font['maxp'] = getTableModule('maxp').table__maxp()
     font['maxp'].numGlyphs = len(glyph_order)
 
-    font['OS/2'] = font.newTable('OS/2')
+    font['OS/2'] = getTableModule('OS_2').table__OS_2()
     font['OS/2'].usFirstCharIndex = min(ord(l) for l in char_labels)
     font['OS/2'].usLastCharIndex = max(ord(l) for l in char_labels)
     font['OS/2'].sTypoAscender = 800
@@ -66,14 +66,14 @@ def make_font(char_images, char_labels):
     font['OS/2'].usWinAscent = 800
     font['OS/2'].usWinDescent = 200
 
-    font['post'] = font.newTable('post')
+    font['post'] = getTableModule('post').table__post()
     font['post'].formatType = 3.0
 
-    glyf_table = font.newTable('glyf')
+    glyf_table = getTableModule('glyf').table__glyf()
     glyf_table.glyphs = {}
     font['glyf'] = glyf_table
 
-    font['hmtx'] = font.newTable('hmtx')
+    font['hmtx'] = getTableModule('hmtx').table__hmtx()
     font['hmtx'].metrics = {}
 
     cmap = {}
@@ -86,7 +86,7 @@ def make_font(char_images, char_labels):
         cmap[ord(label)] = label
 
     from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
-    cmap_table = font.newTable('cmap')
+    cmap_table = getTableModule('cmap').table__cmap()
     cmap_table.tableVersion = 0
     cmap_format = cmap_format_4(4)
     cmap_format.platformID = 3
