@@ -2,13 +2,17 @@ import streamlit as st
 import numpy as np
 import cv2
 from PIL import Image
-from fontTools.ttLib import TTFont, getTableModule
+from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 import io
+import os
+
+TEMPLATE_FONT_PATH = "blank_template.ttf"
 
 st.set_page_config(layout="wide")
 st.title("✍️ Handwriting to Font — Label & Generate")
 
+# --- Character Segmentation ---
 def segment_image(image):
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
@@ -25,6 +29,7 @@ def segment_image(image):
 def pil_image_from_np(np_img):
     return Image.fromarray(255 - np_img)
 
+# --- Glyph Creation ---
 def create_glyph(width, height):
     pen = TTGlyphPen(None)
     pen.moveTo((0, 0))
@@ -34,74 +39,30 @@ def create_glyph(width, height):
     pen.closePath()
     return pen.glyph()
 
-def make_font(char_images, char_labels):
-    font = TTFont()
-    glyph_order = ['.notdef'] + char_labels
-    font.setGlyphOrder(glyph_order)
+# --- Font Generation ---
+def make_font_from_template(char_images, char_labels):
+    font = TTFont(TEMPLATE_FONT_PATH)
+    font.setGlyphOrder(['.notdef'] + char_labels)
 
-    # Use getTableModule for compatibility
-    font['head'] = getTableModule('head').table__head()
-    font['head'].unitsPerEm = 1000
-    font['head'].xMin = 0
-    font['head'].yMin = 0
-    font['head'].xMax = 1000
-    font['head'].yMax = 1000
-    font['head'].indexToLocFormat = 0
-    font['head'].glyphDataFormat = 0
-
-    font['hhea'] = getTableModule('hhea').table__hhea()
-    font['hhea'].ascent = 800
-    font['hhea'].descent = -200
-    font['hhea'].lineGap = 0
-    font['hhea'].numberOfHMetrics = len(glyph_order)
-
-    font['maxp'] = getTableModule('maxp').table__maxp()
-    font['maxp'].numGlyphs = len(glyph_order)
-
-    font['OS/2'] = getTableModule('OS_2').table__OS_2()
-    font['OS/2'].usFirstCharIndex = min(ord(l) for l in char_labels)
-    font['OS/2'].usLastCharIndex = max(ord(l) for l in char_labels)
-    font['OS/2'].sTypoAscender = 800
-    font['OS/2'].sTypoDescender = -200
-    font['OS/2'].usWinAscent = 800
-    font['OS/2'].usWinDescent = 200
-
-    font['post'] = getTableModule('post').table__post()
-    font['post'].formatType = 3.0
-
-    glyf_table = getTableModule('glyf').table__glyf()
-    glyf_table.glyphs = {}
-    font['glyf'] = glyf_table
-
-    font['hmtx'] = getTableModule('hmtx').table__hmtx()
-    font['hmtx'].metrics = {}
-
+    glyf = font['glyf']
+    hmtx = font['hmtx']
     cmap = {}
-    for label, np_img in zip(char_labels, char_images):
-        img = pil_image_from_np(np_img)
-        width, height = img.size
+
+    for label, img in zip(char_labels, char_images):
+        pil_img = pil_image_from_np(img)
+        width, height = pil_img.size
         glyph = create_glyph(width, height)
-        font['glyf'].glyphs[label] = glyph
-        font['hmtx'].metrics[label] = (width, 0)
+        glyf.glyphs[label] = glyph
+        hmtx.metrics[label] = (width, 0)
         cmap[ord(label)] = label
 
-    from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
-    cmap_table = getTableModule('cmap').table__cmap()
-    cmap_table.tableVersion = 0
-    cmap_format = cmap_format_4(4)
-    cmap_format.platformID = 3
-    cmap_format.platEncID = 1
-    cmap_format.language = 0
-    cmap_format.cmap = cmap
-    cmap_table.tables = [cmap_format]
-    font['cmap'] = cmap_table
-
-    font['glyf'].glyphs['.notdef'] = create_glyph(500, 500)
+    font['cmap'].tables[0].cmap.update(cmap)
+    font['maxp'].numGlyphs = len(char_labels) + 1
+    font['hhea'].numberOfHMetrics = len(char_labels) + 1
 
     return font
 
-# --- UI START ---
-
+# --- Streamlit UI ---
 uploaded_file = st.file_uploader("Upload a handwriting scan (PNG/JPG)")
 
 if uploaded_file:
@@ -130,8 +91,10 @@ if uploaded_file:
         if st.button("🎉 Generate Font"):
             if any(len(l) != 1 for l in char_labels):
                 st.error("All characters must be labeled with exactly one character.")
+            elif not os.path.exists(TEMPLATE_FONT_PATH):
+                st.error("Template font missing. Please upload `blank_template.ttf`.")
             else:
-                font = make_font(char_images, char_labels)
+                font = make_font_from_template(char_images, char_labels)
                 buf = io.BytesIO()
                 font.save(buf)
                 buf.seek(0)
