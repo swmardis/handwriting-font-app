@@ -4,6 +4,7 @@ import cv2
 from PIL import Image
 from fontTools.ttLib import TTFont, newTable
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib.tables import _m_a_x_p
 import io
 
 st.set_page_config(layout="wide")
@@ -14,11 +15,30 @@ def create_minimal_blank_font():
 
     font.setGlyphOrder(['.notdef'])
 
-    # Add required tables
-    for tag in ['head', 'hhea', 'maxp', 'name', 'OS/2', 'post', 'cmap', 'glyf', 'hmtx']:
+    # Initialize tables except maxp
+    for tag in ['head', 'hhea', 'name', 'OS/2', 'post', 'cmap', 'glyf', 'hmtx']:
         font[tag] = newTable(tag)
 
-    # head table
+    # Properly initialize maxp table from its class
+    maxp = _m_a_x_p.table__m_a_x_p()
+    maxp.tableVersion = 1.0
+    maxp.numGlyphs = 1
+    maxp.maxPoints = 0
+    maxp.maxContours = 0
+    maxp.maxCompositePoints = 0
+    maxp.maxCompositeContours = 0
+    maxp.maxZones = 1
+    maxp.maxTwilightPoints = 0
+    maxp.maxStorage = 0
+    maxp.maxFunctionDefs = 0
+    maxp.maxInstructionDefs = 0
+    maxp.maxStackElements = 0
+    maxp.maxSizeOfInstructions = 0
+    maxp.maxComponentElements = 0
+    maxp.maxComponentDepth = 0
+    font['maxp'] = maxp
+
+    # head table minimal required fields
     font['head'].unitsPerEm = 1000
     font['head'].xMin = 0
     font['head'].yMin = 0
@@ -51,32 +71,10 @@ def create_minimal_blank_font():
     font['hhea'].reserved2 = 0
     font['hhea'].reserved3 = 0
 
-    # maxp table
-    from fontTools.ttLib.tables import _m_a_x_p
-
-maxp = _m_a_x_p.table__m_a_x_p()
-maxp.tableVersion = 1.0
-maxp.numGlyphs = 1
-maxp.maxPoints = 0
-maxp.maxContours = 0
-maxp.maxCompositePoints = 0
-maxp.maxCompositeContours = 0
-maxp.maxZones = 1
-maxp.maxTwilightPoints = 0
-maxp.maxStorage = 0
-maxp.maxFunctionDefs = 0
-maxp.maxInstructionDefs = 0
-maxp.maxStackElements = 0
-maxp.maxSizeOfInstructions = 0
-maxp.maxComponentElements = 0
-maxp.maxComponentDepth = 0
-
-font['maxp'] = maxp
-
-    # name table empty
+    # name table empty list (you can add metadata here later)
     font['name'].names = []
 
-    # OS/2 table minimal
+    # OS/2 minimal
     font['OS/2'].usFirstCharIndex = 0
     font['OS/2'].usLastCharIndex = 0
     font['OS/2'].sTypoAscender = 800
@@ -97,7 +95,7 @@ font['maxp'] = maxp
     font['post'].minMemType1 = 0
     font['post'].maxMemType1 = 0
 
-    # cmap table with valid subtable
+    # cmap table with valid format 4 subtable
     from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
     cmap_subtable = cmap_format_4(4)
     cmap_subtable.platformID = 3
@@ -106,10 +104,11 @@ font['maxp'] = maxp
     cmap_subtable.cmap = {}
     font['cmap'].tables = [cmap_subtable]
 
+    # Initialize glyf and hmtx tables
     font['glyf'].glyphs = {}
     font['hmtx'].metrics = {}
 
-    # .notdef glyph empty
+    # Add empty .notdef glyph
     pen = TTGlyphPen(None)
     pen.moveTo((0, 0))
     pen.lineTo((0, 0))
